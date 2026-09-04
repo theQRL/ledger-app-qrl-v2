@@ -1,4 +1,4 @@
-FROM ghcr.io/ledgerhq/ledger-app-builder/ledger-app-builder-lite@sha256:687f4071ca076c92afcbb9f9540c4b21ddfc0580a3fe71d6cc1b27edab8905fd AS LITE_BUILDER
+FROM ghcr.io/ledgerhq/ledger-app-builder/ledger-app-builder-lite@sha256:483c91c4121a84af4b9773efd09558900fffe5618814285ec1d52d0e1226beb4 AS LITE_BUILDER
 
 # Base image with clang toolchain
 FROM gcr.io/oss-fuzz-base/base-builder@sha256:8b4a73d83374b298a0a771eeec9a1d44ceff3416a678b7d7946303389d022aca
