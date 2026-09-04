@@ -24,8 +24,8 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: ledgerHQ/ledger-secure-sdk
-          # Pinned so unit-test builds are reproducible; bump deliberately.
-          ref: v27.1.0
+          # ledger-secure-sdk v27.1.0; pin the commit so builds remain reproducible.
+          ref: ceed1ec7200a4813913b48556bb64b0bae67dcd4
           path: sdk
 
       - name: Build unit tests
