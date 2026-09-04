@@ -1,8 +1,11 @@
 #include "keccakf.h"
 
-// Rotate left 64-bit
-static inline uint64_t rol64(uint64_t x, int n) {
-    return (x << n) | (x >> (64 - n));
+// Rotate left 64-bit.
+// r[0] is 0, so the shift count must be masked: evaluating x >> 64 directly is
+// undefined behaviour (UBSan: "shift exponent 64 is too large"). Masking keeps
+// this branchless, which matters in a primitive on the signing path.
+static inline uint64_t rol64(uint64_t x, unsigned n) {
+    return (x << n) | (x >> ((64u - n) & 63u));
 }
 
 // Keccak-f[1600], 24 rounds

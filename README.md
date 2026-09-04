@@ -61,3 +61,76 @@ deliberately not restorable in QRL software wallets, and software backups
 cannot restore it. The device verifies every signature it produces before
 releasing it, and secret signing intermediates are wiped from NVM after each
 operation.
+
+## Flash wear and scratch memory
+
+Post-quantum signing is demanding for a small device. That has one practical
+consequence, described here in full.
+
+### Why the app writes to storage
+
+Your Ledger has 28–40 KB of working memory, shared with the screen and the
+operating system. One ML-DSA-87 signature needs about 63 KB of scratch space.
+It does not fit. So the app borrows a corner of the device's storage (flash)
+while it does the maths.
+
+Flash behaves like a whiteboard. You can rewrite it, but not forever. This
+hardware does not spread wear across the chip, so repeated signing rewrites the
+same patch.
+
+### What ends up in that scratch space
+
+That memory survives a power-off, so it matters what is written there.
+
+- Your recovery phrase and private key never do. They stay in the secure chip's
+  protected storage and in short-lived working memory.
+- What gets written are intermediate results, derived from your key. They are
+  not the key. On their own they cannot rebuild it or forge a signature.
+- The app erases them when signing finishes, before handing the signature back
+  to your computer.
+- Lose power mid-signature and some can survive until the next one. The app
+  clears them at startup.
+
+Reading any of it means physically attacking the secure chip, which is the
+attack a hardware wallet exists to resist.
+
+### Mitigations
+
+The first working version of this app focused on getting the mathematics right
+on tight hardware. We then optimised it to write less.
+
+- Scratch data that never needed to be in storage now stays in working memory.
+- Writes are aligned to the chip's page size, so one write no longer wears two
+  pages.
+- Settings moved to their own page. Changing a setting no longer wears the area
+  signing uses.
+- The retry loop is capped, so an unlucky run cannot spin and write
+  indefinitely.
+- Leftover scratch is cleared at startup, after an interrupted signature.
+
+Each signature now causes about 30 rewrites of the busiest area, down from
+about 439. Roughly a 93% cut.
+
+### Context
+
+Signing is not the only thing writing to this memory. Installing and removing
+apps, firmware updates, settings changes, and data stored by other apps all
+draw on the same budget, on any hardware wallet. After the optimisation work,
+our signing is a modest contributor rather than the dominant one.
+
+We are not quoting a "you get N signatures" number. That depends on how many
+rewrites the secure chip is rated for, which is Ledger's figure to publish.
+
+If this memory did wear out, the app stops signing. It does not sign something
+wrong: the device checks every signature before releasing it. Your recovery
+phrase still restores your funds on another device.
+
+### What may improve
+
+Ledger's SDK keeps developing and now ships its own post-quantum signing that
+runs entirely in working memory. As it matures, and as we keep optimising, the
+scratch writing should keep falling. Moving to an all-in-memory implementation
+would remove this trade-off rather than shrink it. We are tracking Ledger's SDK
+development and will upgrade this app as we are able.  Likewise, as we stress-test
+the app, we may find further optimisations that reduce writes or be better placed
+to estimate a "you get N signatures" number.
