@@ -128,3 +128,37 @@ def test_calldata_refused_when_blind_signing_disabled(backend: BackendInterface)
         with client.sign_tx(path=path, transaction=transaction):
             pass
     assert exc.value.status == Errors.SW_DENY
+
+
+def test_oversized_tx_rejected_across_multiple_apdus(backend: BackendInterface) -> None:
+    """Stream a transaction larger than MAX_TRANSACTION_LEN (510 bytes).
+
+    This is the only test that drives the multi-APDU reassembly path: at 600
+    bytes the client splits the payload into three chunks, so the P1=DATA_MORE
+    branch runs twice before the accumulated length guard in handler_sign_tx
+    trips. The guard fires during streaming, before any RLP parsing or UI, so
+    the payload does not need to be a well-formed transaction.
+    """
+    client = BoilerplateCommandSender(backend)
+    path = "m/44'/238'/0'/0/0"
+    transaction = bytes([0x02]) + b"\xaa" * 599  # 600 B > 510 B buffer
+    with pytest.raises(ExceptionRAPDU) as exc:
+        with client.sign_tx(path=path, transaction=transaction):
+            pass
+    assert exc.value.status == Errors.SW_WRONG_TX_LENGTH
+
+
+def test_tx_at_max_length_is_parsed_not_length_rejected(backend: BackendInterface) -> None:
+    """A 510-byte payload must reach the parser rather than the length guard.
+
+    Guards against an off-by-one that would reject transactions at exactly
+    MAX_TRANSACTION_LEN. The payload is deliberately not valid RLP, so the
+    expected outcome is a parsing failure - proving the length check passed.
+    """
+    client = BoilerplateCommandSender(backend)
+    path = "m/44'/238'/0'/0/0"
+    transaction = bytes([0x02]) + b"\xaa" * 509  # exactly 510 B
+    with pytest.raises(ExceptionRAPDU) as exc:
+        with client.sign_tx(path=path, transaction=transaction):
+            pass
+    assert exc.value.status == Errors.SW_TX_PARSING_FAIL

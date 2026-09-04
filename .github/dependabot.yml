@@ -1,0 +1,33 @@
+version: 2
+
+# SHA-pinned actions and digest-pinned images are only safe if something keeps
+# them current. Dependabot rewrites the pin and updates the trailing "# vN"
+# comment, so review the diff rather than the tag when approving.
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      actions:
+        patterns:
+          - "*"
+
+  - package-ecosystem: pip
+    directory: /tests
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: npm
+    directory: /tests/e2e
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: docker
+    directory: /.clusterfuzzlite
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5

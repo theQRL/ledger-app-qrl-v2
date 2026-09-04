@@ -5,6 +5,7 @@
 #include "shake128.h"
 #include "shake256.h"
 #include "polyvec.h"
+#include "rounding.h"
 #include "os_nvm.h"
 #include "os_pic.h"
 #include "globals.h"
@@ -22,20 +23,12 @@ u_temp_poly_buffer_squeeze ubuf;
  * the SHAKE output live at the same time. */
 static uint8_t gamma1_buffer[POLY_UNIFORM_GAMMA1_N_BLOCKS * STREAM_256_BLOCK_BYTES];
 
+/* Squeeze into RAM, then a single NVM write. Callers pass outlen <= the size of
+ * ubuf.buf_squeeze; the only current caller writes CTILDE_BYTES to N_storage.sig,
+ * which must persist across APDUs while the signature is streamed back. */
 static void shake256_squeeze_volatile(shake256_ctx *ctx, volatile uint8_t *out, size_t outlen) {
-    if (!ctx->squeezing) shake256_finalize(ctx);
-    uint8_t temp = 0;
-    // uint8_t temp[CTILDE_BYTES] = {0};
-    explicit_bzero(&ubuf.buf_squeeze, sizeof(ubuf.buf_squeeze));
-    for (size_t i = 0; i < outlen; i++) {
-        temp = (ctx->s[ctx->pos / 8] >> (8 * (ctx->pos % 8))) & 0xFF;
-        ubuf.buf_squeeze[i] = temp;
-        // nvm_write((void*)&out[i], &temp, sizeof(uint8_t));
-        if (++ctx->pos == SHAKE256_RATE) {
-            keccakf_256(ctx->s);
-            ctx->pos = 0;
-        }
-    }
+    explicit_bzero(ubuf.buf_squeeze, sizeof(ubuf.buf_squeeze));
+    shake256_squeeze(ctx, ubuf.buf_squeeze, outlen);
     nvm_write((void *) &out[0], &ubuf.buf_squeeze[0], outlen);
 }
 
@@ -856,16 +849,11 @@ static uint32_t poly_vec_k_make_hint_volatile(volatile PolyVecK *h,
         memmove(&ubuf.temp_poly, (const Poly *) &h->vec[i], sizeof(Poly));
         uint32_t s2 = 0;
         for (int j = 0; j < N; j++) {
-            int32_t temp = 0;
-            if (v0->vec[i].coeffs[j] > GAMMA2 || v0->vec[i].coeffs[j] < -GAMMA2 ||
-                (v0->vec[i].coeffs[j] == -GAMMA2 && v1->vec[i].coeffs[j] != 0)) {
-                temp = 1;
-            } else {
-                temp = 0;
-            }
+            /* Branchless: make_hint() in rounding.c is constant-time. v0/v1 are
+             * derived from the secret mask y and s2, so this must not branch. */
+            int32_t temp = (int32_t) make_hint(v0->vec[i].coeffs[j], v1->vec[i].coeffs[j]);
 
             ubuf.temp_poly.coeffs[j] = temp;
-            // nvm_write((void *)&h->vec[i].coeffs[j], &temp, sizeof(int32_t));
             s2 += (uint32_t) (ubuf.temp_poly.coeffs[j]);
         }
         nvm_write((void *) &h->vec[i], &ubuf.temp_poly, sizeof(Poly));
@@ -1218,28 +1206,9 @@ static void poly_vec_k_use_hint_volatile(volatile PolyVecK *w,
     for (int i = 0; i < K; i++) {
         memmove(&ubuf.temp_poly, (const Poly *) &w->vec[i], sizeof(Poly));
         for (int j = 0; j < N; j++) {
-            int32_t a0 = 0, a1 = 0;
-            int32_t a = u->vec[i].coeffs[j];
-            int32_t ret = 0;
-
-            int32_t a_decompose = (a + 127) >> 7;
-            a_decompose = (a_decompose * 1025 + (1 << 21)) >> 22;
-            a_decompose &= 15;
-
-            a0 = a - a_decompose * 2 * GAMMA2;
-            a0 -= (((Q_CONST - 1) / 2 - a0) >> 31) & Q_CONST;
-
-            a1 = a_decompose;
-            if (h->vec[i].coeffs[j] == 0) {
-                ret = a1;
-            } else if (a0 > 0) {
-                ret = (a1 + 1) & 15;
-            } else {
-                ret = (a1 - 1) & 15;
-            }
-            ubuf.temp_poly.coeffs[j] = ret;
-            // nvm_write((void *)&w->vec[i].coeffs[j], &temp, sizeof(int32_t));
-            // b->coeffs[i] = ret;
+            /* Branchless: use_hint() in rounding.c is constant-time and performs
+             * the same decompose internally. */
+            ubuf.temp_poly.coeffs[j] = use_hint(u->vec[i].coeffs[j], h->vec[i].coeffs[j]);
         }
         nvm_write((void *) &w->vec[i], &ubuf.temp_poly, sizeof(Poly));
     }

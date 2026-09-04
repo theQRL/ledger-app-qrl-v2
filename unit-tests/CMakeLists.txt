@@ -37,14 +37,23 @@ add_compile_definitions(TEST)
 
 # stubs/ provides a host cx.h (PRINTF only) so device sources compile off-device
 include_directories(stubs)
+include_directories(../src)
 include_directories(../src/mldsa87)
 include_directories(../src/ui)
 
 add_executable(test_rlp_decode test_rlp_decode.c)
 add_executable(test_tx_format test_tx_format.c)
+add_executable(test_hash_kat test_hash_kat.c)
+add_executable(test_address_format test_address_format.c)
 
 add_library(rlp_decode ../src/mldsa87/rlp_decode.c)
 add_library(tx_format ../src/ui/tx_format.c)
+# One shared Keccak-f permutation behind all three sponges.
+add_library(hashes ../src/mldsa87/keccakf.c
+                   ../src/mldsa87/keccak256.c
+                   ../src/mldsa87/shake128.c
+                   ../src/mldsa87/shake256.c)
+add_library(address_format ../src/address_format.c)
 
 target_link_libraries(test_rlp_decode PUBLIC
                       rlp_decode
@@ -54,3 +63,9 @@ target_link_libraries(test_rlp_decode PUBLIC
 add_test(test_rlp_decode test_rlp_decode)
 target_link_libraries(test_tx_format PUBLIC tx_format cmocka gcov)
 add_test(test_tx_format test_tx_format)
+
+target_link_libraries(test_hash_kat PUBLIC hashes cmocka gcov)
+add_test(test_hash_kat test_hash_kat)
+
+target_link_libraries(test_address_format PUBLIC address_format hashes cmocka gcov)
+add_test(test_address_format test_address_format)

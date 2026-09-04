@@ -36,9 +36,16 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 string(REPLACE " " ";" COMPILATION_FLAGS ${COMPILATION_FLAGS_})
 
 include(extra/TxParser.cmake)
+include(extra/TxFormat.cmake)
 
 add_executable(fuzz_tx_parser fuzz_tx_parser.c)
 
 target_compile_options(fuzz_tx_parser PUBLIC ${COMPILATION_FLAGS})
 target_link_options(fuzz_tx_parser PUBLIC ${COMPILATION_FLAGS})
 target_link_libraries(fuzz_tx_parser PUBLIC txparser)
+
+add_executable(fuzz_tx_format fuzz_tx_format.c)
+
+target_compile_options(fuzz_tx_format PUBLIC ${COMPILATION_FLAGS})
+target_link_options(fuzz_tx_format PUBLIC ${COMPILATION_FLAGS})
+target_link_libraries(fuzz_tx_format PUBLIC txformat)

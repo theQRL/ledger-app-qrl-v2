@@ -2,40 +2,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include "cx.h"
+#include "keccakf.h"
 
 // Replace with Ledger OS secure memset, e.g. os_memset
 #define MEMSET memset
 
-// Rotate left 64-bit
-static inline uint64_t ROL64_256(uint64_t x, int n) {
-    return (x << n) | (x >> (64 - n));
-}
-
-// Keccak-f[1600], 24 rounds
-void orig_keccakf_256(uint64_t s[25]) {
-    const uint64_t RC[24] = {
-        0x0000000000000001ULL, 0x0000000000008082ULL, 0x800000000000808AULL, 0x8000000080008000ULL,
-        0x000000000000808BULL, 0x0000000080000001ULL, 0x8000000080008081ULL, 0x8000000000008009ULL,
-        0x000000000000008AULL, 0x0000000000000088ULL, 0x0000000080008009ULL, 0x000000008000000AULL,
-        0x000000008000808BULL, 0x800000000000008BULL, 0x8000000000008089ULL, 0x8000000000008003ULL,
-        0x8000000000008002ULL, 0x8000000000000080ULL, 0x000000000000800AULL, 0x800000008000000AULL,
-        0x8000000080008081ULL, 0x8000000000008080ULL, 0x0000000080000001ULL, 0x8000000080008008ULL};
-    const int r[25] = {0,  1,  62, 28, 27, 36, 44, 6,  55, 20, 3,  10, 43,
-                       25, 39, 41, 45, 15, 21, 8,  18, 2,  61, 56, 14};
-    for (int round = 0; round < 24; round++) {
-        uint64_t C[5], D[5], B[25];
-        for (int x = 0; x < 5; x++) C[x] = s[x] ^ s[x + 5] ^ s[x + 10] ^ s[x + 15] ^ s[x + 20];
-        for (int x = 0; x < 5; x++) D[x] = C[(x + 4) % 5] ^ ROL64_256(C[(x + 1) % 5], 1);
-        for (int i = 0; i < 25; i++) s[i] ^= D[i % 5];
-        for (int i = 0; i < 25; i++) {
-            int x = i % 5, y = i / 5;
-            B[y + 5 * ((2 * x + 3 * y) % 5)] = ROL64_256(s[i], r[i]);
-        }
-        for (int i = 0; i < 25; i++)
-            s[i] = B[i] ^ ((~B[(i + 1) % 5 + 5 * (i / 5)]) & B[(i + 2) % 5 + 5 * (i / 5)]);
-        s[0] ^= RC[round];
-    }
-}
 
 // KECCAK256 context
 typedef struct {
@@ -55,7 +26,7 @@ void keccak256_absorb(keccak256_ctx *ctx, const uint8_t *in, size_t inlen) {
         size_t i = ctx->pos++;
         ctx->s[i / 8] ^= (uint64_t) (*in++) << (8 * (i % 8));
         if (ctx->pos == KECCAK256_RATE) {
-            orig_keccakf_256(ctx->s);
+            keccakf(ctx->s);
             ctx->pos = 0;
         }
     }
@@ -64,7 +35,7 @@ void keccak256_absorb(keccak256_ctx *ctx, const uint8_t *in, size_t inlen) {
 void keccak256_finalize(keccak256_ctx *ctx) {
     ctx->s[ctx->pos / 8] ^= (uint64_t) 0x01 << (8 * (ctx->pos % 8));
     ctx->s[(KECCAK256_RATE - 1) / 8] ^= (uint64_t) 0x80 << (8 * ((KECCAK256_RATE - 1) % 8));
-    orig_keccakf_256(ctx->s);
+    keccakf(ctx->s);
     ctx->pos = 0;
     ctx->squeezing = 1;
 }
@@ -75,7 +46,7 @@ void keccak256_squeeze(keccak256_ctx *ctx, uint8_t *out) {
     while (outlen--) {
         *out++ = (ctx->s[ctx->pos / 8] >> (8 * (ctx->pos % 8))) & 0xFF;
         if (++ctx->pos == KECCAK256_RATE) {
-            orig_keccakf_256(ctx->s);
+            keccakf(ctx->s);
             ctx->pos = 0;
         }
     }
