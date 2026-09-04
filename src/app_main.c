@@ -31,7 +31,7 @@
 #include "sign.h"
 
 global_ctx_t G_context;
-const internal_storage_t N_storage_real;
+const internal_storage_t N_storage_real __attribute__((aligned(64)));
 
 void app_main() {
     // Length of APDU command received in G_io_apdu_buffer
@@ -40,6 +40,10 @@ void app_main() {
     command_t cmd;
 
     io_init();
+
+    /* Signing intermediates live in NVM on low-RAM devices. Clear any values
+     * left behind by a reset or power loss before accepting another request. */
+    wipe_nvm_secrets();
 
     ui_menu_main();
 

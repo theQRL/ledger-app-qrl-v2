@@ -18,25 +18,9 @@ typedef union {
 
 u_temp_poly_buffer_squeeze ubuf;
 
-void shake128_squeeze_volatile(shake128_ctx *ctx,
-                               volatile uint8_t *out,
-                               size_t offset,
-                               size_t outlen) {
-    if (!ctx->squeezing) shake128_finalize(ctx);
-    uint8_t temp = 0;
-    explicit_bzero(&ubuf.buf_squeeze, sizeof(ubuf.buf_squeeze));
-    for (size_t i = 0; i < outlen; i++) {
-        temp = (ctx->s[ctx->pos / 8] >> (8 * (ctx->pos % 8))) & 0xFF;
-        ubuf.buf_squeeze[i] = temp;
-        // nvm_write((void *)&out[i+offset], &temp, sizeof(uint8_t));
-        // *out++ = (ctx->s[ctx->pos / 8] >> (8 * (ctx->pos % 8))) & 0xFF;
-        if (++ctx->pos == 168) {
-            keccakf_128(ctx->s);
-            ctx->pos = 0;
-        }
-    }
-    nvm_write((void *) &out[offset], &ubuf.buf_squeeze, sizeof(uint8_t) * outlen);
-}
+/* Kept separate from ubuf: gamma1 unpacking needs the sampled polynomial and
+ * the SHAKE output live at the same time. */
+static uint8_t gamma1_buffer[POLY_UNIFORM_GAMMA1_N_BLOCKS * STREAM_256_BLOCK_BYTES];
 
 static void shake256_squeeze_volatile(shake256_ctx *ctx, volatile uint8_t *out, size_t outlen) {
     if (!ctx->squeezing) shake256_finalize(ctx);
@@ -76,18 +60,18 @@ static void combined_method(volatile PolyVecK *t1,
             uint8_t nonces[2] = {(uint8_t) (nonce), (uint8_t) (nonce >> 8)};
             shake128_absorb(&ctx, nonces, 2);
             shake128_finalize(&ctx);
-            shake128_squeeze_volatile(&ctx,
-                                      N_storage.buf,
-                                      0,
-                                      POLY_UNIFORM_N_BLOCKS * STREAM_128_BLOCK_BYTES + 2);
+            explicit_bzero(ubuf.buf_squeeze, sizeof(ubuf.buf_squeeze));
+            shake128_squeeze(&ctx,
+                             ubuf.buf_squeeze,
+                             POLY_UNIFORM_N_BLOCKS * STREAM_128_BLOCK_BYTES + 2);
 
             aLen = N;
             bufLen = POLY_UNIFORM_N_BLOCKS * STREAM_128_BLOCK_BYTES + 2;
             uint32_t ctr = 0, pos = 0, t = 0;
             while (ctr < aLen && pos + 3 <= bufLen) {
-                t = (uint32_t) (N_storage.buf[pos]);
-                t |= (uint32_t) (N_storage.buf[pos + 1]) << 8;
-                t |= (uint32_t) (N_storage.buf[pos + 2]) << 16;
+                t = (uint32_t) (ubuf.buf_squeeze[pos]);
+                t |= (uint32_t) (ubuf.buf_squeeze[pos + 1]) << 8;
+                t |= (uint32_t) (ubuf.buf_squeeze[pos + 2]) << 16;
                 t &= 0x7fffff;
 
                 pos += 3;
@@ -99,26 +83,20 @@ static void combined_method(volatile PolyVecK *t1,
             }
 
             bufLen = POLY_UNIFORM_N_BLOCKS * STREAM_128_BLOCK_BYTES;
-            uint8_t temp_val = 0;
             while (ctr < N) {
                 size_t off = bufLen % 3;
-                for (size_t n = 0; n < off; n++) {
-                    temp_val = N_storage.buf[bufLen - off + n];
-                    nvm_write((void *) &N_storage.buf[n], &temp_val, sizeof(uint8_t));
-                    // buf[n] = buf[bufLen-off+n];
+                if (off != 0) {
+                    memmove(ubuf.buf_squeeze, ubuf.buf_squeeze + bufLen - off, off);
                 }
-                shake128_squeeze_volatile(&ctx,
-                                          N_storage.buf,
-                                          (size_t) off,
-                                          STREAM_128_BLOCK_BYTES);
+                shake128_squeeze(&ctx, ubuf.buf_squeeze + off, STREAM_128_BLOCK_BYTES);
                 aLen = N - ctr;
                 bufLen = STREAM_128_BLOCK_BYTES + off;
                 uint32_t ctrNew = 0;
                 pos = 0;
                 while (ctrNew < aLen && pos + 3 <= bufLen) {
-                    t = (uint32_t) (N_storage.buf[pos]);
-                    t |= (uint32_t) (N_storage.buf[pos + 1]) << 8;
-                    t |= (uint32_t) (N_storage.buf[pos + 2]) << 16;
+                    t = (uint32_t) (ubuf.buf_squeeze[pos]);
+                    t |= (uint32_t) (ubuf.buf_squeeze[pos + 1]) << 8;
+                    t |= (uint32_t) (ubuf.buf_squeeze[pos + 2]) << 16;
                     t &= 0x7fffff;
 
                     pos += 3;
@@ -427,7 +405,7 @@ static void poly_vec_l_uniform_gamma1_volatile(volatile PolyVecL *v,
     // static uint8_t buf[POLY_UNIFORM_GAMMA1_N_BLOCKS * STREAM_256_BLOCK_BYTES] = {0};
     for (int j = (uint16_t) 0; j < L; j++) {
         memmove(&ubuf.temp_poly, (const Poly *) &v->vec[j], sizeof(Poly));
-        // explicit_bzero(buf, POLY_UNIFORM_GAMMA1_N_BLOCKS * STREAM_256_BLOCK_BYTES);
+        explicit_bzero(gamma1_buffer, sizeof(gamma1_buffer));
 
         shake256_ctx ctx;
         shake256_init(&ctx);
@@ -436,33 +414,31 @@ static void poly_vec_l_uniform_gamma1_volatile(volatile PolyVecL *v,
         uint8_t nonces[2] = {(uint8_t) nonce_val, (uint8_t) (nonce_val >> 8)};
         shake256_absorb(&ctx, nonces, 2);
         shake256_finalize(&ctx);
-        shake256_squeeze_volatile(&ctx,
-                                  N_storage.buf,
-                                  POLY_UNIFORM_GAMMA1_N_BLOCKS * STREAM_256_BLOCK_BYTES);
+        shake256_squeeze(&ctx, gamma1_buffer, sizeof(gamma1_buffer));
         shake256_clear(&ctx);
 
         for (int i = 0; i < N / 2; i++) {
-            ubuf.temp_poly.coeffs[2 * i + 0] = (int32_t) (N_storage.buf[5 * i + 0]);
+            ubuf.temp_poly.coeffs[2 * i + 0] = (int32_t) (gamma1_buffer[5 * i + 0]);
 
             ubuf.temp_poly.coeffs[2 * i + 0] =
                 ubuf.temp_poly.coeffs[2 * i + 0] |
-                (int32_t) ((uint32_t) (N_storage.buf[5 * i + 1]) << 8);
+                (int32_t) ((uint32_t) (gamma1_buffer[5 * i + 1]) << 8);
 
             ubuf.temp_poly.coeffs[2 * i + 0] =
                 ubuf.temp_poly.coeffs[2 * i + 0] |
-                (int32_t) ((uint32_t) (N_storage.buf[5 * i + 2]) << 16);
+                (int32_t) ((uint32_t) (gamma1_buffer[5 * i + 2]) << 16);
 
             ubuf.temp_poly.coeffs[2 * i + 0] = ubuf.temp_poly.coeffs[2 * i + 0] & 0xFFFFF;
 
-            ubuf.temp_poly.coeffs[2 * i + 1] = (int32_t) (N_storage.buf[5 * i + 2] >> 4);
+            ubuf.temp_poly.coeffs[2 * i + 1] = (int32_t) (gamma1_buffer[5 * i + 2] >> 4);
 
             ubuf.temp_poly.coeffs[2 * i + 1] =
                 ubuf.temp_poly.coeffs[2 * i + 1] |
-                (int32_t) ((uint32_t) (N_storage.buf[5 * i + 3]) << 4);
+                (int32_t) ((uint32_t) (gamma1_buffer[5 * i + 3]) << 4);
 
             ubuf.temp_poly.coeffs[2 * i + 1] =
                 ubuf.temp_poly.coeffs[2 * i + 1] |
-                (int32_t) ((uint32_t) (N_storage.buf[5 * i + 4]) << 12);
+                (int32_t) ((uint32_t) (gamma1_buffer[5 * i + 4]) << 12);
 
             ubuf.temp_poly.coeffs[2 * i + 0] = ubuf.temp_poly.coeffs[2 * i + 0] & 0xFFFFF;
 
@@ -471,6 +447,7 @@ static void poly_vec_l_uniform_gamma1_volatile(volatile PolyVecL *v,
             ubuf.temp_poly.coeffs[2 * i + 1] = GAMMA1 - ubuf.temp_poly.coeffs[2 * i + 1];
         }
         nvm_write((void *) &v->vec[j], &ubuf.temp_poly, sizeof(Poly));
+        explicit_bzero(gamma1_buffer, sizeof(gamma1_buffer));
     }
 }
 
@@ -1000,6 +977,7 @@ ErrorCode crypto_sign_optimized(const uint32_t bip32_path[],
     explicit_bzero(rhoPrime, CRH_BYTES);
 
     uint16_t nonce = 0;
+    uint16_t attempts = 0;
 
     /* Compute mu = CRH(tr, 0, ctxlen, ctx, msg) */
     shake256_init(&ctx);
@@ -1024,6 +1002,17 @@ ErrorCode crypto_sign_optimized(const uint32_t bip32_path[],
     poly_vec_k_ntt(&u.s2);
     poly_vec_k_ntt_volatile(&N_storage.pack1.t0);
 rej:
+    if (attempts >= 814) {
+        explicit_bzero(seed, sizeof(seed));
+        explicit_bzero(rnd, sizeof(rnd));
+        explicit_bzero(key, sizeof(key));
+        explicit_bzero(rhoPrime, sizeof(rhoPrime));
+        explicit_bzero(mu, sizeof(mu));
+        explicit_bzero(&s1, sizeof(s1));
+        explicit_bzero(&u, sizeof(u));
+        return ERR_INVALID_SIGNATURE;
+    }
+    attempts++;
     /* Sample intermediate vector y */
     /* Sample directly into the NVM-backed low-RAM workspace. */
     poly_vec_l_uniform_gamma1_volatile(&N_storage.y, rhoPrime, nonce);
@@ -1441,5 +1430,4 @@ void wipe_nvm_secrets(void) {
     nvm_zero(&N_storage.y, sizeof(PolyVecL));
     nvm_zero(&N_storage.pack1, sizeof(N_storage.pack1));
     nvm_zero(&N_storage.w0, sizeof(PolyVecK));
-    nvm_zero(&N_storage.buf, sizeof(N_storage.buf));
 }
