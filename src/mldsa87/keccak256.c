@@ -7,7 +7,6 @@
 // Replace with Ledger OS secure memset, e.g. os_memset
 #define MEMSET memset
 
-
 // KECCAK256 context
 typedef struct {
     uint64_t s[25];

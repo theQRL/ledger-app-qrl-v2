@@ -4,7 +4,6 @@
 #include <string.h>
 #include "keccakf.h"
 
-
 void shake128_init(shake128_ctx *ctx) {
     MEMSET(ctx, 0, sizeof(*ctx));
 }
