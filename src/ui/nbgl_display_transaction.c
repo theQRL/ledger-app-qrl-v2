@@ -59,12 +59,16 @@ static void bytes_to_lower_hex(const uint8_t *bytes, size_t len, char *out) {
 
 // called when long press button on 3rd page is long-touched or when reject footer is touched
 static void review_choice(bool confirm) {
-    // Answer, display a status page and go back to main
-    nbgl_useCaseSpinner("Signing");
-    validate_transaction(confirm);
+    // Answer, display a status page and go back to main.
+    // The spinner belongs only on the signing path: showing "Signing" after the
+    // user pressed Reject is misleading, and the frame is transient on that path
+    // (rejection only sends SW_DENY), which made the screen count racy.
     if (confirm) {
+        nbgl_useCaseSpinner("Signing");
+        validate_transaction(confirm);
         nbgl_useCaseReviewStatus(STATUS_TYPE_TRANSACTION_SIGNED, ui_menu_main);
     } else {
+        validate_transaction(confirm);
         nbgl_useCaseReviewStatus(STATUS_TYPE_TRANSACTION_REJECTED, ui_menu_main);
     }
 }
