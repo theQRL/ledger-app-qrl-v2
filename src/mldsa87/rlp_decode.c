@@ -27,6 +27,7 @@ static int parse_rlp_item(const uint8_t *input,
             PRINTF("ERROR short string\n");
             return -1;
         }
+        if (len == 1 && input[1] < 0x80) return -1;
         *out_data = &input[1];
         *out_len = len;
         return 1 + len;
@@ -38,6 +39,7 @@ static int parse_rlp_item(const uint8_t *input,
             return -1;
         }
         size_t len = 0;
+        if (input[1] == 0) return -1;
         for (size_t i = 0; i < len_of_len; i++) {
             len = (len << 8) | input[1 + i];
         }
@@ -45,6 +47,7 @@ static int parse_rlp_item(const uint8_t *input,
             PRINTF("ERROR long string 2\n");
             return -1;
         }
+        if (len < 56) return -1;
         *out_data = &input[1 + len_of_len];
         *out_len = len;
         return 1 + len_of_len + len;
@@ -60,11 +63,13 @@ static int parse_rlp_item(const uint8_t *input,
         size_t len_of_len = prefix - 0xf7;
         if (len_of_len > input_len - 1) return -1;
         size_t len = 0;
+        if (input[1] == 0) return -1;
         for (size_t i = 0; i < len_of_len; i++) {
             len = (len << 8) | input[1 + i];
         }
         // subtractive form: the additive check overflows for huge len
         if (len > input_len - 1 - len_of_len) return -1;
+        if (len < 56) return -1;
         *out_data = &input[1 + len_of_len];
         *out_len = len;
         return 1 + len_of_len + len;
@@ -95,6 +100,7 @@ static int parse_rlp_list_header(const uint8_t *input,
             return -1;
         }
         size_t len = 0;
+        if (input[1] == 0) return -1;
         for (size_t i = 0; i < len_of_len; i++) {
             len = (len << 8) | input[1 + i];
         }
@@ -104,6 +110,7 @@ static int parse_rlp_list_header(const uint8_t *input,
             PRINTF("header prefix 0xf8 2\n");
             return -1;
         }
+        if (len < 56) return -1;
         return 0;
     }
     PRINTF("header else\n");
@@ -150,7 +157,7 @@ int decode_ledger_tx(const uint8_t *rlp, size_t rlp_len, zond_tx_t *tx) {
 
     // 1. chain_id
     consumed = parse_rlp_item(p, remaining, &val_ptr, &val_len);
-    if (consumed < 0 || val_len > MAX_FIELD_SIZE) {
+    if (consumed < 0 || val_len > MAX_FIELD_SIZE || (val_len > 0 && val_ptr[0] == 0)) {
         PRINTF("chain id\n");
         return -1;
     }
@@ -161,7 +168,7 @@ int decode_ledger_tx(const uint8_t *rlp, size_t rlp_len, zond_tx_t *tx) {
 
     // 2. nonce
     consumed = parse_rlp_item(p, remaining, &val_ptr, &val_len);
-    if (consumed < 0 || val_len > sizeof(tx->nonce)) {
+    if (consumed < 0 || val_len > sizeof(tx->nonce) || (val_len > 0 && val_ptr[0] == 0)) {
         PRINTF("nonce\n");
         return -1;
     }
@@ -172,7 +179,7 @@ int decode_ledger_tx(const uint8_t *rlp, size_t rlp_len, zond_tx_t *tx) {
 
     // 3. gas_tip_cap
     consumed = parse_rlp_item(p, remaining, &val_ptr, &val_len);
-    if (consumed < 0 || val_len > MAX_FIELD_SIZE) {
+    if (consumed < 0 || val_len > MAX_FIELD_SIZE || (val_len > 0 && val_ptr[0] == 0)) {
         PRINTF("gas tip cap\n");
         return -1;
     }
@@ -183,7 +190,7 @@ int decode_ledger_tx(const uint8_t *rlp, size_t rlp_len, zond_tx_t *tx) {
 
     // 4. gas_fee_cap
     consumed = parse_rlp_item(p, remaining, &val_ptr, &val_len);
-    if (consumed < 0 || val_len > MAX_FIELD_SIZE) {
+    if (consumed < 0 || val_len > MAX_FIELD_SIZE || (val_len > 0 && val_ptr[0] == 0)) {
         PRINTF("gas fee cap\n");
         return -1;
     }
@@ -194,7 +201,7 @@ int decode_ledger_tx(const uint8_t *rlp, size_t rlp_len, zond_tx_t *tx) {
 
     // 5. gas
     consumed = parse_rlp_item(p, remaining, &val_ptr, &val_len);
-    if (consumed < 0 || val_len > sizeof(tx->gas)) {
+    if (consumed < 0 || val_len > sizeof(tx->gas) || (val_len > 0 && val_ptr[0] == 0)) {
         PRINTF("gas\n");
         return -1;
     }
@@ -216,7 +223,7 @@ int decode_ledger_tx(const uint8_t *rlp, size_t rlp_len, zond_tx_t *tx) {
 
     // 7. value
     consumed = parse_rlp_item(p, remaining, &val_ptr, &val_len);
-    if (consumed < 0 || val_len > MAX_FIELD_SIZE) {
+    if (consumed < 0 || val_len > MAX_FIELD_SIZE || (val_len > 0 && val_ptr[0] == 0)) {
         PRINTF("value\n");
         return -1;
     }
@@ -227,20 +234,30 @@ int decode_ledger_tx(const uint8_t *rlp, size_t rlp_len, zond_tx_t *tx) {
     remaining -= consumed;
 
     // 8. data
+    if (remaining == 0 || p[0] >= 0xc0) {
+        PRINTF("Data must be an RLP string\n");
+        return -1;
+    }
     consumed = parse_rlp_item(p, remaining, &val_ptr, &val_len);
     if (consumed < 0) {
         PRINTF("Invalid data field\n");
         return -1;
     }
+    tx->has_data = val_len != 0;
     p += consumed;
     remaining -= consumed;
 
     // 9. access_list
+    if (remaining == 0 || p[0] < 0xc0) {
+        PRINTF("Access list must be an RLP list\n");
+        return -1;
+    }
     consumed = parse_rlp_item(p, remaining, &val_ptr, &val_len);
     if (consumed < 0) {
         PRINTF("Invalid access_list field\n");
         return -1;
     }
+    tx->has_access_list = val_len != 0;
     p += consumed;
     remaining -= consumed;
 

@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <stdbool.h>
 
 #define ADDRESS_LENGTH 64
 #define MAX_FIELD_SIZE 32
@@ -27,6 +28,9 @@ typedef struct {
 
     uint8_t value[MAX_FIELD_SIZE];
     uint8_t value_len;
+
+    bool has_data;
+    bool has_access_list;
 
     uint8_t descriptor[3];
     uint8_t descriptor_len;

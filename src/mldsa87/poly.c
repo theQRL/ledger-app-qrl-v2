@@ -82,6 +82,7 @@ void poly_use_hint(Poly *b, Poly *a, Poly *h) {
 
 int32_t poly_chk_norm(Poly *a, int32_t B) {
     int32_t t = 0;
+    uint32_t violation = 0;
 
     if (B > ((Q_CONST - 1) / 8)) {
         return 1;
@@ -95,12 +96,10 @@ int32_t poly_chk_norm(Poly *a, int32_t B) {
         t = a->coeffs[i] >> 31;
         t = a->coeffs[i] - (t & 2 * a->coeffs[i]);
 
-        if (t >= B) {
-            return 1;
-        }
+        violation |= 1U ^ ((uint32_t) (t - B) >> 31);
     }
 
-    return 0;
+    return (int32_t) (violation & 1U);
 }
 
 ErrorCode poly_uniform(Poly *a, uint8_t (*seed)[SEED_BYTES], uint16_t nonce) {

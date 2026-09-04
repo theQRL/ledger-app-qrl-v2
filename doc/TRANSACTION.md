@@ -24,13 +24,13 @@ fixed 8-byte signing context `5a4f4e4401010000`
 
 | # | Field | Constraint enforced by the device |
 | ---: | --- | --- |
-| 1 | `chain_id` | ≤ 8 bytes |
+| 1 | `chain_id` | ≤ 32 bytes |
 | 2 | `nonce` | ≤ 8 bytes |
-| 3 | `gas_tip_cap` | ≤ 8 bytes (maxPriorityFeePerGas) |
-| 4 | `gas_fee_cap` | ≤ 8 bytes (maxFeePerGas) |
+| 3 | `gas_tip_cap` | ≤ 32 bytes (maxPriorityFeePerGas) |
+| 4 | `gas_fee_cap` | ≤ 32 bytes (maxFeePerGas) |
 | 5 | `gas` | ≤ 8 bytes |
 | 6 | `to` | exactly 64 bytes, or empty (contract creation) |
-| 7 | `value` | ≤ 8 bytes |
+| 7 | `value` | ≤ 32 bytes |
 | 8 | `data` | opaque |
 | 9 | `access_list` | opaque RLP item |
 | 10 | `descriptor` | exactly `01 00 00` (ML-DSA-87) |

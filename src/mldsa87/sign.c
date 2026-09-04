@@ -972,7 +972,8 @@ ErrorCode crypto_sign_optimized(const uint32_t bip32_path[],
     /* Matrix-vector multiplication */
     u.s1hat = s1;
     poly_vec_l_ntt(&u.s1hat);
-    combined_method(&N_storage.t1, &u.s1hat, rho);  // TODO: fix this method
+    /* Low-RAM matrix/vector multiplication streams its result through NVM. */
+    combined_method(&N_storage.t1, &u.s1hat, rho);
     poly_vec_k_reduce_volatile(&N_storage.t1);
     poly_vec_k_inv_ntt_to_mont_volatile(&N_storage.t1);
 
@@ -1024,7 +1025,8 @@ ErrorCode crypto_sign_optimized(const uint32_t bip32_path[],
     poly_vec_k_ntt_volatile(&N_storage.pack1.t0);
 rej:
     /* Sample intermediate vector y */
-    poly_vec_l_uniform_gamma1_volatile(&N_storage.y, rhoPrime, nonce);  // TODO: fix this method
+    /* Sample directly into the NVM-backed low-RAM workspace. */
+    poly_vec_l_uniform_gamma1_volatile(&N_storage.y, rhoPrime, nonce);
     nonce++;
 
     // 	/* Matrix-vector multiplication */

@@ -115,8 +115,11 @@ int handler_sign_tx(buffer_t *cdata, uint8_t p1, uint8_t p2) {
             return io_send_sw(SW_TX_PARSING_FAIL);
         }
 
-        return ui_display_transaction(&tx);
-        // return ui_display_blind_signed_transaction();
+        bool blind = tx.has_data || tx.has_access_list;
+        if (blind && !N_storage.enable_blind_signing) {
+            return io_send_sw(SW_DENY);
+        }
+        return ui_display_transaction_bs_choice(blind, &tx);
     } else if (p1 == 2 && p2 > 0 && p2 < 18) {
         if (G_context.req_type != CONFIRM_TRANSACTION) {
             return io_send_sw(SW_BAD_STATE);

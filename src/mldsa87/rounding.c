@@ -21,24 +21,23 @@ int32_t decompose(int32_t *a0, int32_t a) {
 }
 
 uint32_t make_hint(int32_t a0, int32_t a1) {
-    if (a0 > GAMMA2 || a0 < -GAMMA2 || (a0 == -GAMMA2 && a1 != 0)) {
-        return 1;
-    }
-
-    return 0;
+    uint32_t gt = (uint32_t) (GAMMA2 - a0) >> 31;
+    uint32_t lt = (uint32_t) (a0 + GAMMA2) >> 31;
+    int32_t diff = a0 + GAMMA2;
+    uint32_t eq = 1U - ((uint32_t) (diff | -diff) >> 31);
+    uint32_t nz = (uint32_t) (a1 | -a1) >> 31;
+    return (gt | lt | (eq & nz)) & 1U;
 }
 
 int32_t use_hint(int32_t a, int32_t hint) {
     int32_t a0 = 0, a1 = 0;
 
     a1 = decompose(&a0, a);
-    if (hint == 0) {
-        return a1;
-    }
-
-    if (a0 > 0) {
-        return (a1 + 1) & 15;
-    } else {
-        return (a1 - 1) & 15;
-    }
+    int32_t hint_zero = 1 - (int32_t) ((uint32_t) (hint | -hint) >> 31);
+    int32_t positive = (int32_t) ((uint32_t) -a0 >> 31);
+    int32_t mask_zero = -hint_zero;
+    int32_t mask_nz = -(1 - hint_zero);
+    int32_t mask_pos = -positive;
+    return (a1 & mask_zero) | (((a1 + 1) & 15) & mask_nz & mask_pos) |
+           (((a1 - 1) & 15) & mask_nz & ~mask_pos);
 }

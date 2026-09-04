@@ -22,11 +22,11 @@ ENABLE_TESTING()
 # specify C standard
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED True)
-set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -Wall -pedantic -g -O0 --coverage")
+set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -Wall -Wextra -Werror -pedantic -g -O0 --coverage -fsanitize=address,undefined -fno-omit-frame-pointer")
 
 set(GCC_COVERAGE_LINK_FLAGS "--coverage -lgcov")
 set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${GCC_COVERAGE_LINK_FLAGS}")
-set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${GCC_COVERAGE_LINK_FLAGS}")
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${GCC_COVERAGE_LINK_FLAGS} -fsanitize=address,undefined")
 
 # guard against in-source builds
 if(${CMAKE_SOURCE_DIR} STREQUAL ${CMAKE_BINARY_DIR})
@@ -38,10 +38,13 @@ add_compile_definitions(TEST)
 # stubs/ provides a host cx.h (PRINTF only) so device sources compile off-device
 include_directories(stubs)
 include_directories(../src/mldsa87)
+include_directories(../src/ui)
 
 add_executable(test_rlp_decode test_rlp_decode.c)
+add_executable(test_tx_format test_tx_format.c)
 
 add_library(rlp_decode ../src/mldsa87/rlp_decode.c)
+add_library(tx_format ../src/ui/tx_format.c)
 
 target_link_libraries(test_rlp_decode PUBLIC
                       rlp_decode
@@ -49,3 +52,5 @@ target_link_libraries(test_rlp_decode PUBLIC
                       gcov)
 
 add_test(test_rlp_decode test_rlp_decode)
+target_link_libraries(test_tx_format PUBLIC tx_format cmocka gcov)
+add_test(test_tx_format test_tx_format)

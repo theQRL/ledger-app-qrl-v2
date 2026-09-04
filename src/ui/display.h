@@ -34,10 +34,11 @@ int ui_display_address(void);
  */
 int ui_display_transaction(zond_tx_t *);
 
+int ui_display_transaction_bs_choice(bool is_blind_signed, zond_tx_t *tx);
+
 /**
  * Display blind-sign transaction information on the device and ask confirmation to sign.
  *
  * @return 0 if success, negative integer otherwise.
  *
  */
-int ui_display_blind_signed_transaction(void);

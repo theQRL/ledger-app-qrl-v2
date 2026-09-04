@@ -63,6 +63,21 @@ static void test_decode_valid_64byte_recipient(void **state) {
     assert_int_equal(tx.chain_id_len, 3);
     assert_int_equal(tx.nonce_len, 1);
     assert_int_equal(tx.nonce[0], 0x01);
+    assert_false(tx.has_data);
+    assert_false(tx.has_access_list);
+}
+
+static void test_reject_noncanonical_integer(void **state) {
+    (void) state;
+    uint8_t buf[600];
+    size_t n = unhex(VALID_64B_TO, buf, sizeof(buf));
+    zond_tx_t tx;
+    /* nonce 0x01 encoded as 0x81 0x01; grow list payload and total by one. */
+    memmove(buf + 8, buf + 7, n - 7);
+    buf[2]++;
+    buf[7] = 0x81;
+    memset(&tx, 0, sizeof(tx));
+    assert_int_not_equal(decode_ledger_tx(buf, n + 1, &tx), 0);
 }
 
 static void test_decode_contract_creation(void **state) {
@@ -163,6 +178,7 @@ int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_decode_valid_64byte_recipient),
         cmocka_unit_test(test_decode_contract_creation),
+        cmocka_unit_test(test_reject_noncanonical_integer),
         cmocka_unit_test(test_reject_20byte_recipient),
         cmocka_unit_test(test_reject_legacy_10_fields),
         cmocka_unit_test(test_reject_bad_descriptor),

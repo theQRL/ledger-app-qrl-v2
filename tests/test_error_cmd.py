@@ -56,4 +56,5 @@ def test_invalid_state(backend: BackendInterface) -> None:
                          p1=P1.P1_START + 1,  # Try to continue a flow instead of start a new one
                          p2=P2.P2_MORE,
                          data=b"abcde")  # data is not parsed in this case
-    assert e.value.status == Errors.SW_BAD_STATE
+    # The dispatcher now rejects the out-of-range P2 before state handling.
+    assert e.value.status == Errors.SW_WRONG_P1P2

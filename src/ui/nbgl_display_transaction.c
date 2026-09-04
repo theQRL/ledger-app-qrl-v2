@@ -30,105 +30,31 @@
 #include "constants.h"
 #include "globals.h"
 #include "sw.h"
-#include "address.h"
+#include "tx_format.h"
 #include "validate.h"
 #include "menu.h"
 #include "address.h"
 
 static char g_from_address[1 + ADDRESS_SIZE * 2 + 1];
-static char g_amount[30];
+static char g_amount[TX_FORMAT_MAX_AMOUNT_LEN + 5];
 static char g_to_address[1 + ADDRESS_SIZE * 2 + 1];
-static char g_max_fees[30];
-// static char dec[10];
+static char g_max_fees[TX_FORMAT_MAX_AMOUNT_LEN + 5];
+static char g_chain_id[TX_FORMAT_MAX_DECIMAL_DIGITS + 1];
+static char g_nonce[21];
+static char g_gas_limit[21];
+static char g_gas_tip_cap[TX_FORMAT_MAX_AMOUNT_LEN + 5];
+static char g_tx_hash[65];
 
-static nbgl_contentTagValue_t pairs[4];
+static nbgl_contentTagValue_t pairs[9];
 static nbgl_contentTagValueList_t pairList;
 
-#define MAX_DECIMAL_DIGITS 40
-#define MAX_RESULT_LEN     50
-
-static void uint8_array_to_decimal(const uint8_t *bytes, size_t len, char *out) {
-    uint8_t temp[32] = {0};  // Ensure full zero-init
-    memcpy(temp, bytes, len);
-
-    char result[MAX_DECIMAL_DIGITS];
-    int result_index = MAX_DECIMAL_DIGITS;
-
-    // Repeated division by 10
-    while (1) {
-        int remainder = 0;
-        int is_zero = 1;
-
-        for (size_t i = 0; i < len; i++) {
-            int val = (remainder << 8) | temp[i];
-            temp[i] = val / 10;
-            remainder = val % 10;
-            if (temp[i] != 0) is_zero = 0;
-        }
-
-        result[--result_index] = '0' + remainder;
-        if (is_zero) break;
+static void bytes_to_lower_hex(const uint8_t *bytes, size_t len, char *out) {
+    static const char hex[] = "0123456789abcdef";
+    for (size_t i = 0; i < len; i++) {
+        out[2 * i] = hex[bytes[i] >> 4];
+        out[2 * i + 1] = hex[bytes[i] & 0x0f];
     }
-
-    size_t num_digits = MAX_DECIMAL_DIGITS - result_index;
-    memcpy(out, &result[result_index], num_digits);
-    out[num_digits] = '\0';  // Proper null termination
-}
-
-// Inserts decimal point `decimals` from the right, trims trailing zeros
-static void format_with_decimals(const char *raw, size_t decimals, char *out, size_t out_len) {
-    size_t len = strlen(raw);
-    char buffer[MAX_RESULT_LEN] = {0};
-    size_t pos = 0;
-
-    if (decimals == 0) {
-        snprintf(out, out_len, "%s", raw);
-        return;
-    }
-
-    if (len <= decimals) {
-        buffer[pos++] = '0';
-        buffer[pos++] = '.';
-        for (size_t i = 0; i < decimals - len && pos < MAX_RESULT_LEN - 1; i++) {
-            buffer[pos++] = '0';
-        }
-        for (size_t i = 0; i < len && pos < MAX_RESULT_LEN - 1; i++) {
-            buffer[pos++] = raw[i];
-        }
-    } else {
-        size_t int_part = len - decimals;
-        for (size_t i = 0; i < int_part && pos < MAX_RESULT_LEN - 1; i++) {
-            buffer[pos++] = raw[i];
-        }
-        if (pos < MAX_RESULT_LEN - 1) {
-            buffer[pos++] = '.';
-        }
-        for (size_t i = int_part; i < len && pos < MAX_RESULT_LEN - 1; i++) {
-            buffer[pos++] = raw[i];
-        }
-    }
-    buffer[pos] = '\0';
-
-    // Trim trailing zeros
-    char *end = buffer + strlen(buffer) - 1;
-    while (*end == '0' && end > buffer) {
-        *end-- = '\0';
-    }
-    if (*end == '.') {
-        *end = '\0';  // remove dot if nothing after
-    }
-
-    snprintf(out, out_len, "%s", buffer);
-}
-
-// Wrapper: amount in wei to QRL units
-static void convert_amount_to_eth(const uint8_t *amount,
-                                  size_t len,
-                                  char *out_str,
-                                  size_t out_len) {
-    char dec[MAX_RESULT_LEN];
-    uint8_array_to_decimal(amount, len, dec);
-    format_with_decimals(dec, 18, out_str, out_len);
+    out[2 * len] = '\0';
 }
 
 // called when long press button on 3rd page is long-touched or when reject footer is touched
@@ -202,18 +128,6 @@ int ui_display_transaction_bs_choice(bool is_blind_signed, zond_tx_t *tx) {
     }
     PRINTF("\n");
 
-    // Format nonce
-    // uint8_array_to_decimal(tx->nonce, tx->nonce_len, dec);
-
-    // Format tx hash
-    // char tx_hash[65] = {0};
-    // memset(tx_hash, 0, sizeof(tx_hash));
-    // bytes_to_hex_string(G_context.tx_info.m_hash, 32, tx_hash);
-    // tx_hash[64] = '\0';
-    // PRINTF("tx hash %s\n", tx_hash);
-    // memset(g_tx_hash, 0, sizeof(g_tx_hash));
-    // snprintf(g_amount, sizeof(g_amount), "QRL %.*s", sizeof(amount), amount);
-
     // Format from address
     memset(g_from_address, 0, sizeof(g_from_address));
     if (!format_checksummed_address(G_context.address, g_from_address, sizeof(g_from_address))) {
@@ -221,12 +135,12 @@ int ui_display_transaction_bs_choice(bool is_blind_signed, zond_tx_t *tx) {
     }
 
     // Format amount
-    char amount[30] = {0};
-    memset(amount, 0, sizeof(amount));
-    convert_amount_to_eth(tx->value, tx->value_len, amount, sizeof(amount));
+    char amount[TX_FORMAT_MAX_AMOUNT_LEN] = {0};
+    if (!format_qrl_amount(tx->value, tx->value_len, amount, sizeof(amount)))
+        return io_send_sw(SW_DISPLAY_AMOUNT_FAIL);
     PRINTF("amount %s\n", amount);
     memset(g_amount, 0, sizeof(g_amount));
-    snprintf(g_amount, sizeof(g_amount), "QRL %.*s", sizeof(amount), amount);
+    snprintf(g_amount, sizeof(g_amount), "QRL %s", amount);
 
     // Format to address
     memset(g_to_address, 0, sizeof(g_to_address));
@@ -236,30 +150,55 @@ int ui_display_transaction_bs_choice(bool is_blind_signed, zond_tx_t *tx) {
     PRINTF("to %s\n", g_to_address);
 
     // Format max_fees
-    char max_fees[30] = {0};
-    memset(max_fees, 0, sizeof(max_fees));
-    convert_amount_to_eth(tx->gas_fee_cap, tx->gas_fee_cap_len, max_fees, sizeof(max_fees));
+    uint8_t fee_product[TX_FORMAT_MAX_INTEGER_BYTES];
+    size_t fee_product_len = sizeof(fee_product);
+    char max_fees[TX_FORMAT_MAX_AMOUNT_LEN] = {0};
+    if (!multiply_uint8_arrays(tx->gas_fee_cap,
+                               tx->gas_fee_cap_len,
+                               tx->gas,
+                               tx->gas_len,
+                               fee_product,
+                               &fee_product_len) ||
+        !format_qrl_amount(fee_product, fee_product_len, max_fees, sizeof(max_fees)))
+        return io_send_sw(SW_DISPLAY_AMOUNT_FAIL);
     PRINTF("max fees %s\n", max_fees);
     memset(g_max_fees, 0, sizeof(g_max_fees));
-    snprintf(g_max_fees, sizeof(g_max_fees), "QRL %.*s", sizeof(max_fees), max_fees);
+    snprintf(g_max_fees, sizeof(g_max_fees), "QRL %s", max_fees);
 
     // Setup data to display
-    pairs[0].item = "From";
-    pairs[0].value = g_from_address;
-    pairs[1].item = "Amount";
-    pairs[1].value = g_amount;
-    pairs[2].item = "To";
-    pairs[2].value = g_to_address;
-    pairs[3].item = "Max fees";
-    pairs[3].value = g_max_fees;
-    // pairs[4].item = "Nonce";
-    // pairs[4].value = dec;
-    // pairs[5].item = "Tx hash";
-    // pairs[5].value = tx_hash;
+    if (!uint8_array_to_decimal(tx->chain_id, tx->chain_id_len, g_chain_id, sizeof(g_chain_id)) ||
+        !uint8_array_to_decimal(tx->gas, tx->gas_len, g_gas_limit, sizeof(g_gas_limit)) ||
+        !format_qrl_amount(tx->gas_tip_cap, tx->gas_tip_cap_len, amount, sizeof(amount)))
+        return io_send_sw(SW_DISPLAY_AMOUNT_FAIL);
+    snprintf(g_gas_tip_cap, sizeof(g_gas_tip_cap), "QRL %s", amount);
+
+    size_t count = 0;
+#define ADD_PAIR(label, text)          \
+    do {                               \
+        pairs[count].item = (label);   \
+        pairs[count++].value = (text); \
+    } while (0)
+    ADD_PAIR("From", g_from_address);
+    ADD_PAIR("Amount", g_amount);
+    ADD_PAIR("To", g_to_address);
+    ADD_PAIR("Chain ID", g_chain_id);
+    ADD_PAIR("Gas limit", g_gas_limit);
+    ADD_PAIR("Priority fee / gas", g_gas_tip_cap);
+    ADD_PAIR("Max fees", g_max_fees);
+    if (N_storage.display_nonce) {
+        if (!uint8_array_to_decimal(tx->nonce, tx->nonce_len, g_nonce, sizeof(g_nonce)))
+            return io_send_sw(SW_DISPLAY_AMOUNT_FAIL);
+        ADD_PAIR("Nonce", g_nonce);
+    }
+    if (N_storage.display_tx_hash) {
+        bytes_to_lower_hex(G_context.tx_info.m_hash, 32, g_tx_hash);
+        ADD_PAIR("Transaction hash", g_tx_hash);
+    }
+#undef ADD_PAIR
 
     // Setup list
     pairList.nbMaxLinesForValue = 0;
-    pairList.nbPairs = 4;
+    pairList.nbPairs = count;
     pairList.pairs = pairs;
 
     if (is_blind_signed) {
@@ -291,11 +230,6 @@ int ui_display_transaction_bs_choice(bool is_blind_signed, zond_tx_t *tx) {
                            review_choice);
     }
     return 0;
-}
-
-// Flow used to display a blind-signed transaction
-int ui_display_blind_signed_transaction(void) {
-    return ui_display_transaction_bs_choice(true, NULL);
 }
 
 // Flow used to display a clear-signed transaction
