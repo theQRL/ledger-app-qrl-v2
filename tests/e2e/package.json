@@ -4,7 +4,7 @@
   "type": "module",
   "description": "End-to-end devnet test scripts for the QRL v2.0 Ledger app",
   "dependencies": {
-    "@noble/hashes": "2.2.0",
+    "@noble/hashes": "2.4.0",
     "@theqrl/wallet.js": "6.2.4"
   }
 }
