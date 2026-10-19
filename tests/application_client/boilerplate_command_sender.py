@@ -40,7 +40,6 @@ class Errors(IntEnum):
     SW_DISPLAY_BIP32_PATH_FAIL = 0xB001
     SW_DISPLAY_ADDRESS_FAIL    = 0xB002
     SW_DISPLAY_AMOUNT_FAIL     = 0xB003
-    SW_WRONG_TX_LENGTH         = 0xB004
     SW_TX_PARSING_FAIL         = 0xB005
     SW_TX_HASH_FAIL            = 0xB006
     SW_BAD_STATE               = 0xB007

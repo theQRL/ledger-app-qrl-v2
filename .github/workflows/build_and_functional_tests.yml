@@ -38,6 +38,7 @@ jobs:
       contents: read
       actions: write
       pull-requests: write
+      packages: read  # Required by reusable_build.yml to pull the builder image.
     with:
       upload_app_binaries_artifact: "compiled_app_binaries"
 

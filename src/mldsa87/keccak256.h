@@ -1,3 +1,6 @@
+#pragma once
+
+#include <stddef.h>  // size_t
 #include <stdint.h>
 
 // Replace with Ledger OS secure memset, e.g. os_memset

@@ -21,11 +21,6 @@
 #define MAX_APPNAME_LEN 64
 
 /**
- * Maximum transaction length (bytes).
- */
-#define MAX_TRANSACTION_LEN 510
-
-/**
  * Prefix byte for QRL v2.0 addresses.
  */
 #define ZOND_ADDRESS_PREFIX 'Q'

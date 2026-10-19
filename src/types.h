@@ -7,7 +7,8 @@
 
 #include "constants.h"
 #include "constant.h"
-#include "rlp_decode.h"
+#include "tx_types.h"
+#include "keccak256.h"  // keccak256_ctx
 
 /**
  * Enumeration with expected INS of APDU commands.
@@ -49,9 +50,10 @@ typedef struct {
  * Structure for transaction information context.
  */
 typedef struct {
-    uint8_t raw_tx[MAX_TRANSACTION_LEN];  /// raw transaction serialized
-    size_t raw_tx_len;                    /// length of raw transaction
-    uint8_t m_hash[32];                   /// message hash digest
+    tx_stream_t stream;      /// streaming RLP parser position, kept between APDUs
+    keccak256_ctx hash_ctx;  /// Keccak-256 of the raw bytes, fed chunk by chunk
+    uint8_t m_hash[32];      /// message hash digest
+    zond_tx_t tx_data;       /// decoded fields for display
 } transaction_ctx_t;
 
 /**

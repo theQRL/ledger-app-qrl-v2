@@ -37,8 +37,9 @@ fixed 8-byte signing context `5a4f4e4401010000`
 | 11 | `extra_params` | reserved; must be empty, but present in the signed list |
 
 The list must contain exactly these 11 items; trailing or missing items fail
-parsing. Maximum streamed transaction size is `MAX_TRANSACTION_LEN`
-(currently 510 bytes, `src/constants.h`).
+parsing. The transaction is parsed and hashed chunk by chunk as the APDUs
+arrive (`src/tx_stream.c`), so there is no fixed size limit; only a sanity cap
+of `TX_MAX_TOTAL_LEN` (64 KiB, `src/tx_types.h`) applies.
 
 The full on-chain transaction appends `signature` (4,627 bytes) and
 `public_key` (2,592 bytes) after `extra_params`; the device never receives or

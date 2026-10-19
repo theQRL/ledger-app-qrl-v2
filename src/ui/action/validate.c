@@ -39,7 +39,6 @@ static int crypto_sign_message(void) {
     cx_err_t error = 0;
 
     PRINTF("bip32_path_len %d\n", G_context.bip32_path_len);
-    PRINTF("raw_tx_len %d\n", G_context.tx_info.raw_tx_len);
     PRINTF("SIGNING START\n");
     error = crypto_sign_optimized(G_context.bip32_path,
                                   G_context.bip32_path_len,
@@ -51,7 +50,6 @@ static int crypto_sign_message(void) {
         return -1;
     }
     PRINTF("bip32_path_len %d\n", G_context.bip32_path_len);
-    PRINTF("raw_tx_len %d\n", G_context.tx_info.raw_tx_len);
     PRINTF("VERIFY START\n");
     bool is_verified = false;
     error = crypto_verify_optimized(G_context.bip32_path,

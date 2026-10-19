@@ -1,7 +1,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include "cx.h"
 #include "keccakf.h"
 
 // Replace with Ledger OS secure memset, e.g. os_memset

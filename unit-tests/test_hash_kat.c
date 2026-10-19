@@ -138,12 +138,42 @@ static void test_incremental_absorb_matches_single(void **state) {
     assert_memory_equal(one, many, sizeof(one));
 }
 
+static void test_keccak256_chunked_kat(void **state) {
+    (void) state;
+    uint8_t message[3072];
+    uint8_t out[32];
+    const size_t chunk_sizes[] = {1, 135, 136, 137, 255};
+
+    for (size_t i = 0; i < sizeof(message); i++) {
+        message[i] = (uint8_t) i;
+    }
+
+    // Independent PyCryptodome oracle for bytes(range(256)) * 12. Exercise
+    // absorption across both the Keccak rate and the 255-byte APDU boundary.
+    for (size_t c = 0; c < sizeof(chunk_sizes) / sizeof(chunk_sizes[0]); c++) {
+        keccak256_ctx ctx;
+        keccak256_init(&ctx);
+        for (size_t offset = 0; offset < sizeof(message); offset += chunk_sizes[c]) {
+            size_t remaining = sizeof(message) - offset;
+            size_t len = remaining < chunk_sizes[c] ? remaining : chunk_sizes[c];
+            keccak256_absorb(&ctx, message + offset, len);
+        }
+        keccak256_finalize(&ctx);
+        keccak256_squeeze(&ctx, out);
+        keccak256_clear(&ctx);
+        assert_hex_equal(out,
+                         "b162ab7e4131fa5862215a4263000c08e9a4722745f415cebc1db02f0282026f",
+                         32);
+    }
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_keccak256_kat),
         cmocka_unit_test(test_shake128_kat),
         cmocka_unit_test(test_shake256_kat),
         cmocka_unit_test(test_incremental_absorb_matches_single),
+        cmocka_unit_test(test_keccak256_chunked_kat),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

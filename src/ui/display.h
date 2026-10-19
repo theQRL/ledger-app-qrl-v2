@@ -1,7 +1,7 @@
 #pragma once
 
 #include <stdbool.h>  // bool
-#include "rlp_decode.h"
+#include "tx_types.h"
 
 #if defined(TARGET_NANOX) || defined(TARGET_NANOS2)
 #define ICON_APP_BOILERPLATE C_app_qrl_14px

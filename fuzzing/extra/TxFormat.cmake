@@ -6,6 +6,5 @@ add_library(txformat
 set_target_properties(txformat PROPERTIES SOVERSION 1)
 
 target_include_directories(txformat PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/../unit-tests/stubs
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui
 )

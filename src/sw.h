@@ -41,10 +41,6 @@
  */
 #define SW_DISPLAY_AMOUNT_FAIL 0xB003
 /**
- * Status word for wrong transaction length.
- */
-#define SW_WRONG_TX_LENGTH 0xB004
-/**
  * Status word for fail of transaction parsing.
  */
 #define SW_TX_PARSING_FAIL 0xB005

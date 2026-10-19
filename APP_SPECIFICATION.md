@@ -55,7 +55,7 @@ The address can be verified on the device before being returned.
 
 This command signs a QRL v2.0 transaction after having the user validate the transactions parameters.
 
-The input data is the RLP encoded transaction streamed to the device in 255 bytes maximum data chunks.
+The input data is the RLP encoded transaction streamed to the device in 255 bytes maximum data chunks. The device parses and hashes the transaction incrementally as the chunks arrive, so there is no fixed maximum transaction size (only a 64 KiB sanity cap applies).
 
 As the signature size exceeds maximum APDU response length, responses will be chunked with max size of 258 bytes each. The main app should request each chunk manually with index from 0-17, where the first chunk will be automatically returned after the last transaction data is sent and the signature is computed.
 
@@ -66,7 +66,7 @@ As the signature size exceeds maximum APDU response length, responses will be ch
 | CLA | INS  | P1                   | P2                               | Lc       |
 | --- | ---  | ---                  | ---                              | ---      |
 | E0  | 06   |  00 : first data (BIP32 path) | 00 | variable |
-|     |      |  01 : more tx data                  | 01-11 : request more signature chunk | variable   |
+|     |      |  01 : more tx data                  | 01-17 : request more signature chunk | variable   |
 |     |      |  02 : last tx data                  | |   |
 
 ##### `Input data (first transaction data block)`
@@ -161,7 +161,6 @@ The following standard Status Words are returned for all APDUs.
 |   B001   | SW_DISPLAY_BIP32_PATH_FAIL  | BIP32 path conversion to string failed                |
 |   B002   | SW_DISPLAY_ADDRESS_FAIL     | Address conversion to string failed                   |
 |   B003   | SW_DISPLAY_AMOUNT_FAIL      | Amount conversion to string failed                    |
-|   B004   | SW_WRONG_TX_LENGTH          | Wrong raw transaction length                          |
 |   B005   | SW_TX_PARSING_FAIL          | Failed to parse raw transaction                       |
 |   B006   | SW_TX_HASH_FAIL             | Failed to compute hash digest of raw transaction      |
 |   B007   | SW_BAD_STATE                | Security issue with bad state                         |

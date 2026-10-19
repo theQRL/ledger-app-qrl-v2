@@ -12,12 +12,11 @@ set(CMAKE_C_FLAGS_DEBUG
 )
 
 add_library(txparser
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/mldsa87/rlp_decode.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/tx_stream.c
 )
 
 set_target_properties(txparser PROPERTIES SOVERSION 1)
 
 target_include_directories(txparser PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/../unit-tests/stubs
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/mldsa87
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
 )

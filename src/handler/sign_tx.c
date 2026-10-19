@@ -32,10 +32,11 @@
 #include "validate.h"
 #include "send_response.h"
 #include "keccak256.h"
-#include "rlp_decode.h"
+#include "tx_stream.h"
+#include "dispatcher.h"  // DATA_FIRST, DATA_MORE, DATA_LAST
 
 int handler_sign_tx(buffer_t *cdata, uint8_t p1, uint8_t p2) {
-    if (p1 == 0) {
+    if (p1 == DATA_FIRST) {
         explicit_bzero(&G_context, sizeof(G_context));
         G_context.req_type = CONFIRM_TRANSACTION;
         G_context.state = STATE_NONE;
@@ -51,84 +52,68 @@ int handler_sign_tx(buffer_t *cdata, uint8_t p1, uint8_t p2) {
             return io_send_sw(SW_WRONG_DATA_LENGTH);
         }
 
-        return io_send_sw(SW_OK);
+        tx_stream_init(&G_context.tx_info.stream, &G_context.tx_info.tx_data);
+        keccak256_init(&G_context.tx_info.hash_ctx);
 
-    } else if (p1 == 1) {
+        return io_send_sw(SW_OK);
+    }
+
+    if (p1 == DATA_MORE || (p1 == DATA_LAST && p2 == 0)) {
         if (G_context.req_type != CONFIRM_TRANSACTION) {
             return io_send_sw(SW_BAD_STATE);
         }
-        if (G_context.tx_info.raw_tx_len + cdata->size > sizeof(G_context.tx_info.raw_tx)) {
-            return io_send_sw(SW_WRONG_TX_LENGTH);
+        if (cdata->offset >= cdata->size) {
+            return io_send_sw(SW_WRONG_DATA_LENGTH);
         }
-        if (!buffer_move(cdata,
-                         G_context.tx_info.raw_tx + G_context.tx_info.raw_tx_len,
-                         cdata->size)) {
+
+        const uint8_t *chunk = cdata->ptr + cdata->offset;
+        size_t chunk_len = cdata->size - cdata->offset;
+
+        // Every raw byte is part of the sighash preimage: the type byte, the
+        // RLP headers and the `data` / `access_list` bytes the parser skips.
+        keccak256_absorb(&G_context.tx_info.hash_ctx, chunk, chunk_len);
+
+        tx_stream_status_e status =
+            tx_stream_feed(&G_context.tx_info.stream, &G_context.tx_info.tx_data, chunk, chunk_len);
+        if (status == TX_STREAM_ERROR) {
             return io_send_sw(SW_TX_PARSING_FAIL);
         }
-        G_context.tx_info.raw_tx_len += cdata->size;
 
-        PRINTF("current data len %d\n", G_context.tx_info.raw_tx_len);
-        PRINTF("chunk data size %d\n", cdata->size);
-
-        // more APDUs with transaction part are expected.
-        // Send a SW_OK to signal that we have received the chunk
-        return io_send_sw(SW_OK);
-
-    } else if (p1 == 2 && p2 == 0) {
-        if (G_context.req_type != CONFIRM_TRANSACTION) {
-            return io_send_sw(SW_BAD_STATE);
+        if (p1 == DATA_MORE) {
+            if (status == TX_STREAM_FINISHED) {
+                // the outer list is already closed but the host announces more data
+                return io_send_sw(SW_TX_PARSING_FAIL);
+            }
+            // more APDUs with transaction parts are expected
+            return io_send_sw(SW_OK);
         }
-        if (G_context.tx_info.raw_tx_len + cdata->size > sizeof(G_context.tx_info.raw_tx)) {
-            return io_send_sw(SW_WRONG_TX_LENGTH);
-        }
-        if (!buffer_move(cdata,
-                         G_context.tx_info.raw_tx + G_context.tx_info.raw_tx_len,
-                         cdata->size)) {
-            return io_send_sw(SW_TX_PARSING_FAIL);
-        }
-        G_context.tx_info.raw_tx_len += cdata->size;
 
-        PRINTF("current data len %d\n", G_context.tx_info.raw_tx_len);
-        PRINTF("chunk data size %d\n", cdata->size);
-        // last APDU for this transaction, let's parse, display and request a sign confirmation
-
+        // last APDU for this transaction
+        if (status != TX_STREAM_FINISHED) {
+            return io_send_sw(SW_TX_PARSING_FAIL);  // truncated transaction
+        }
+        keccak256_finalize(&G_context.tx_info.hash_ctx);
+        keccak256_squeeze(&G_context.tx_info.hash_ctx, G_context.tx_info.m_hash);
+        keccak256_clear(&G_context.tx_info.hash_ctx);
         G_context.state = STATE_PARSED;
 
-        // Hash message
-        keccak256_ctx ctx;
-        keccak256_init(&ctx);
-        keccak256_absorb(&ctx, G_context.tx_info.raw_tx, G_context.tx_info.raw_tx_len);
-        keccak256_finalize(&ctx);
-        keccak256_squeeze(&ctx, G_context.tx_info.m_hash);
-        keccak256_clear(&ctx);
-        PRINTF("MESSAGE HASH: ");
-        for (int i = 0; i < 32; i++) {
-            PRINTF("%02x", G_context.tx_info.m_hash[i]);
-        }
-        PRINTF("\n");
-
-        zond_tx_t tx;
-        explicit_bzero(&tx, sizeof(tx));
-        int err = decode_ledger_tx(G_context.tx_info.raw_tx, G_context.tx_info.raw_tx_len, &tx);
-        if (err != 0) {
-            PRINTF("Failed to decode\n");
-            return io_send_sw(SW_TX_PARSING_FAIL);
-        }
-
-        bool blind = tx.has_data || tx.has_access_list;
+        zond_tx_t *tx = &G_context.tx_info.tx_data;
+        bool blind = tx->has_data || tx->has_access_list;
         if (blind && !N_storage.enable_blind_signing) {
             return io_send_sw(SW_DENY);
         }
-        return ui_display_transaction_bs_choice(blind, &tx);
-    } else if (p1 == 2 && p2 > 0 && p2 < 18) {
+        return ui_display_transaction_bs_choice(blind, tx);
+    }
+
+    if (p1 == DATA_LAST && p2 > 0 && p2 < 18) {
         if (G_context.req_type != CONFIRM_TRANSACTION) {
             return io_send_sw(SW_BAD_STATE);
         }
         if (N_storage.is_sending_signature) {
             return helper_send_response_sig(p2);
-        } else {
-            return io_send_sw(SW_BAD_STATE);
         }
+        return io_send_sw(SW_BAD_STATE);
     }
+
     return io_send_sw(SW_WRONG_P1P2);
 }
