@@ -66,7 +66,7 @@ As the signature size exceeds maximum APDU response length, responses will be ch
 | CLA | INS  | P1                   | P2                               | Lc       |
 | --- | ---  | ---                  | ---                              | ---      |
 | E0  | 06   |  00 : first data (BIP32 path) | 00 | variable |
-|     |      |  01 : more tx data                  | 01-17 : request more signature chunk | variable   |
+|     |      |  01 : more tx data                  | 01-11 : request more signature chunk | variable   |
 |     |      |  02 : last tx data                  | |   |
 
 ##### `Input data (first transaction data block)`
